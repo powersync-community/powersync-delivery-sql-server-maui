@@ -1,11 +1,13 @@
-using DeliveryApp.Services;
+using DeliveryApp.Data;
 
 namespace DeliveryApp.ViewModels;
 
 public static class ErrorMessages
 {
-    public const string Connection = "Couldn't reach the server. Check your connection and try again.";
-
-    /// <summary>The banner text for a failed request. Otherwise the server's own error text (e.g. for a 409).</summary>
-    public static string For(ApiException ex) => ex.IsConnectionProblem ? Connection : ex.Message;
+    /// <summary>
+    /// The banner text for a write the server refused, with the server's own reason, e.g.
+    /// "Stop 4: your 'delivered' wasn't saved. Dispatch canceled this stop."
+    /// </summary>
+    public static string For(Rejection rejection) =>
+        $"Stop {rejection.StopSequence}: your '{rejection.Outcome}' wasn't saved. {rejection.Error}";
 }

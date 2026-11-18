@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://unpkg.com/@powersync/service-schema@latest/json-schema/powersync-config.json
+# PowerSync Service config. Values marked !env come from docker-compose.yml (and from there, .env).
+
+telemetry:
+  disable_telemetry_sharing: true
+
+# Replicate from SQL Server via CDC (see db/powersync.sql).
+replication:
+  connections:
+    - type: mssql
+      # mssql://powersync_user:<POWERSYNC_DB_PASSWORD>@sqlserver:1433/DeliveryApp, built in docker-compose.yml
+      uri: !env PS_DATA_SOURCE_URI
+      schema: dbo
+      additionalConfig:
+        # The local SQL Server container uses a self-signed certificate.
+        trustServerCertificate: true
+        # Polling defaults (pollingIntervalMs: 1000, pollingBatchSize: 10) are left as they are.
+
+# Bucket storage: MongoDB replica set, as in the self-host-demo.
+storage:
+  type: mongodb
+  uri: !env PS_MONGO_URI
+
+port: 8080
+
+sync_config:
+  path: sync-config.yaml
+
+client_auth:
+  # The API's own JWKS. PowerSync fetches the public key from it and checks the API's tokens directly,
+  # so the API's auth doesn't change. (Fetching from a private address is allowed by default when
+  # self-hosting: block_local_jwks and jwks_reject_ip_ranges are unset.)
+  jwks_uri: http://server:7070/.well-known/jwks.json
+  audience: ["delivery-api"]

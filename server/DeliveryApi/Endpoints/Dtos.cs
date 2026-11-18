@@ -7,7 +7,8 @@ namespace DeliveryApi.Endpoints;
 public record TokenRequest(string? DriverId);
 public record TokenResponse(string Token, DateTime ExpiresAt);
 
-public record DeliveryRequest(string? Outcome, string? Note);
+// Id and RecordedAt are optional: an offline client sends its own, older clients send neither.
+public record DeliveryRequest(Guid? Id, string? Outcome, string? Note, DateTimeOffset? RecordedAt);
 
 public record StopDto(Guid Id, DateOnly RouteDate, int Sequence, string Recipient, string Address, string Status, DateTime UpdatedAt)
 {

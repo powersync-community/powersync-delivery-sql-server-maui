@@ -6,6 +6,8 @@ services:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
       MSSQL_PID: Developer
+      # CDC capture runs as a SQL Server Agent job. Without the Agent, PowerSync never sees a change.
+      MSSQL_AGENT_ENABLED: "true"
     ports:
       - "1433:1433"
     volumes:
@@ -32,6 +34,21 @@ services:
     entrypoint: ["/bin/sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P \"$$MSSQL_SA_PASSWORD\" -b -i /db/init.sql"]
     restart: "no"
 
+  # One-shot: prepares the database for PowerSync (CDC, powersync_user, checkpoints table).
+  db-powersync:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      POWERSYNC_DB_PASSWORD: ${POWERSYNC_DB_PASSWORD}
+    volumes:
+      - ./db:/db:ro
+    entrypoint: ["/bin/sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P \"$$MSSQL_SA_PASSWORD\" -b -v POWERSYNC_DB_PASSWORD=\"$$POWERSYNC_DB_PASSWORD\" -i /db/powersync.sql"]
+    restart: "no"
+
   server:
     build: ./server/DeliveryApi
     depends_on:
@@ -48,5 +65,52 @@ services:
       - "7070:7070"
     restart: unless-stopped
 
+  # PowerSync Service: replicates SQL Server (via CDC) into buckets and streams them to devices.
+  powersync:
+    image: journeyapps/powersync-service:1.28.3
+    depends_on:
+      db-powersync:
+        condition: service_completed_successfully
+      mongo-rs-init:
+        condition: service_completed_successfully
+      # PowerSync checks the app's tokens against the API's JWKS.
+      server:
+        condition: service_started
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/service.yaml
+      PS_DATA_SOURCE_URI: mssql://powersync_user:${POWERSYNC_DB_PASSWORD}@sqlserver:1433/DeliveryApp
+      PS_MONGO_URI: mongodb://mongo:27017/powersync
+      NODE_OPTIONS: --max-old-space-size=1000
+    volumes:
+      - ./powersync:/config:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/probes/liveness').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 1s
+      retries: 15
+    restart: unless-stopped
+
+  # Bucket storage for PowerSync: a single-node MongoDB replica set (as in PowerSync's self-host-demo).
+  mongo:
+    image: mongo:7.0
+    command: --replSet rs0 --bind_ip_all --quiet
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+  # One-shot: initializes the replica set (a no-op once it exists).
+  mongo-rs-init:
+    image: mongo:7.0
+    depends_on:
+      - mongo
+    restart: on-failure
+    entrypoint:
+      - bash
+      - -c
+      - 'mongosh --host mongo:27017 --eval ''try{rs.status().ok && quit(0)} catch {} rs.initiate({_id: "rs0", version: 1, members: [{ _id: 0, host : "mongo:27017" }]})'''
+
 volumes:
   mssql-data:
+  mongo-data:

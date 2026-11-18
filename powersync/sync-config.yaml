@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://unpkg.com/@powersync/service-sync-rules@latest/schema/sync_rules.json
+# What each device syncs. Changes here need a restart of the powersync container.
+config:
+  edition: 3
+
+streams:
+  # All of the driver's stops and deliveries; the app filters to today's route locally. Fine for a demo,
+  # where each driver only ever has one day. A real app would limit this to a date window
+  # (e.g. route_date >= yesterday), so old routes drop off devices.
+  # Both tables are listed by name: SQL Server doesn't support wildcard table names, and each needs CDC.
+  my_route:
+    auto_subscribe: true
+    queries:
+      - SELECT * FROM stops WHERE driver_id = auth.user_id()
+      - SELECT * FROM deliveries WHERE driver_id = auth.user_id()

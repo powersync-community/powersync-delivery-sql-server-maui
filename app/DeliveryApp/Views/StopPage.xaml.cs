@@ -15,9 +15,15 @@ public partial class StopPage : ContentPage
     /// <summary>Close the keyboard when an outcome button is tapped (the command does the actual work).</summary>
     void OnOutcomeClicked(object? sender, EventArgs e) => NoteEntry.Unfocus();
 
-    protected override async void OnAppearing()
+    protected override void OnAppearing()
     {
         base.OnAppearing();
-        await _viewModel.OnAppearingAsync();
+        _viewModel.OnAppearing();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _viewModel.OnDisappearing();
     }
 }
