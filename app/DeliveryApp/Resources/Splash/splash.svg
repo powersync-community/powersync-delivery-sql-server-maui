@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="456" height="456" viewBox="0 0 456 456" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <!-- A package: box with a strip of tape. -->
+    <path d="M228 108l124 56v128l-124 56-124-56V164z" fill="#FFFFFF" />
+    <path d="M104 164l124 56 124-56" fill="none" stroke="#512BD4" stroke-width="12" stroke-linejoin="round" />
+    <path d="M228 220v128" stroke="#512BD4" stroke-width="12" />
+    <path d="M166 136l124 56v44" fill="none" stroke="#512BD4" stroke-width="12" stroke-linejoin="round" />
+</svg>

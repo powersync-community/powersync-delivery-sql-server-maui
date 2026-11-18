@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:DeliveryApp.ViewModels"
+             xmlns:services="clr-namespace:DeliveryApp.Services"
+             xmlns:views="clr-namespace:DeliveryApp.Views"
+             xmlns:converters="clr-namespace:DeliveryApp.Converters"
+             x:Class="DeliveryApp.Views.StopsPage"
+             x:DataType="vm:StopsViewModel"
+             Title="Today's route">
+
+    <ContentPage.Resources>
+        <converters:StrikethroughConverter x:Key="Strikethrough" />
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,Auto,*">
+        <Label Text="{Binding DriverLabel}"
+               Style="{StaticResource SecondaryLabel}"
+               Padding="16,0,16,8" />
+
+        <views:ErrorBanner Grid.Row="1" Message="{Binding ErrorMessage}" />
+
+        <RefreshView Grid.Row="2"
+                     IsRefreshing="{Binding IsRefreshing}"
+                     Command="{Binding LoadCommand}">
+            <CollectionView AutomationId="StopsList"
+                            ItemsSource="{Binding Stops}"
+                            SelectionMode="Single"
+                            SelectedItem="{Binding SelectedStop}"
+                            SelectionChangedCommand="{Binding OpenStopCommand}">
+                <CollectionView.EmptyView>
+                    <Label Text="No stops today."
+                           IsVisible="{Binding ShowEmptyState}"
+                           Style="{StaticResource SecondaryLabel}"
+                           FontSize="16"
+                           HorizontalOptions="Center"
+                           Margin="0,48,0,0" />
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="services:Stop">
+                        <Grid Padding="16,12"
+                              ColumnDefinitions="32,*,Auto"
+                              RowDefinitions="Auto,Auto"
+                              ColumnSpacing="8"
+                              RowSpacing="2">
+                            <Grid.Triggers>
+                                <DataTrigger TargetType="Grid" Binding="{Binding IsCanceled}" Value="True">
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </DataTrigger>
+                            </Grid.Triggers>
+                            <Label Grid.RowSpan="2"
+                                   Text="{Binding Sequence}"
+                                   FontSize="20"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center"
+                                   TextDecorations="{Binding IsCanceled, Converter={StaticResource Strikethrough}}" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding Recipient}"
+                                   FontAttributes="Bold"
+                                   LineBreakMode="TailTruncation"
+                                   TextDecorations="{Binding IsCanceled, Converter={StaticResource Strikethrough}}" />
+                            <Label Grid.Column="1"
+                                   Grid.Row="1"
+                                   Text="{Binding Address}"
+                                   Style="{StaticResource SecondaryLabel}"
+                                   LineBreakMode="TailTruncation"
+                                   TextDecorations="{Binding IsCanceled, Converter={StaticResource Strikethrough}}" />
+                            <views:StatusBadge Grid.Column="2"
+                                               Grid.RowSpan="2"
+                                               Status="{Binding Status}" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+    </Grid>
+</ContentPage>
