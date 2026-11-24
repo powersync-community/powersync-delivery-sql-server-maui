@@ -2,11 +2,16 @@ using System.Globalization;
 
 namespace DeliveryApp.Converters;
 
-/// <summary>Formats a UTC timestamp as "just now", "5 min ago", "3 h ago", "yesterday" or a date.</summary>
+/// <summary>
+/// Formats a UTC timestamp as "just now", "5 min ago", "3 h ago", "yesterday" or a date. Takes a DateTime
+/// or text (how the local database stores timestamps: UTC, with no zone).
+/// </summary>
 public class RelativeTimeConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
+        if (value is string text)
+            value = DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed) ? parsed : null;
         if (value is not DateTime time)
             return "";
 

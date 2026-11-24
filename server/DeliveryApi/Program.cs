@@ -3,9 +3,11 @@ using DeliveryApi;
 using DeliveryApi.Auth;
 using DeliveryApi.Data;
 using DeliveryApi.Endpoints;
+using DeliveryApi.Sync;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Dotmim.Sync.SqlServer;
 using Microsoft.IdentityModel.Tokens;
 
 var settings = Settings.FromEnvironment();
@@ -60,6 +62,15 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
+// Sync endpoint (Dotmim.Sync, see Sync/SyncController.cs). One sync is several HTTP requests that share
+// state through the ASP.NET session, so the docs make a cache and sessions mandatory.
+// Production: a distributed cache (e.g. Redis or SQL Server) when there's more than one server instance;
+// the memory cache loses every session in flight on a restart.
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(o => o.IdleTimeout = TimeSpan.FromMinutes(30));
+builder.Services.AddControllers();
+builder.Services.AddSyncServer(new SqlSyncChangeTrackingProvider(settings.ConnectionString), DeliverySync.Setup());
+
 var app = builder.Build();
 
 if (keyGenerated)
@@ -78,8 +89,10 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseSession();
 
 app.MapAuthEndpoints();
 app.MapStopEndpoints();
+app.MapControllers();
 
 app.Run();

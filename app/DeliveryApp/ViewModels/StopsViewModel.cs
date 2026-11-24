@@ -1,15 +1,19 @@
 using System.Collections.ObjectModel;
+using DeliveryApp.Data;
 using DeliveryApp.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 namespace DeliveryApp.ViewModels;
 
-public partial class StopsViewModel(ApiClient api, DriverIdentity identity) : ObservableObject
+public partial class StopsViewModel(Database database, DriverIdentity identity) : ObservableObject
 {
     public ObservableCollection<Stop> Stops { get; } = [];
 
     public string DriverLabel { get; } = $"Driver: {identity.DriverId}";
+
+    /// <summary>The page binds <c>Database.StatusLine</c>.</summary>
+    public Database Database => database;
 
     [ObservableProperty]
     bool isRefreshing;
@@ -18,43 +22,47 @@ public partial class StopsViewModel(ApiClient api, DriverIdentity identity) : Ob
     [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
     bool hasLoaded;
 
-    /// <summary>Text of the dismissable error banner, or null when there's nothing to show.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
-    string? errorMessage;
-
     [ObservableProperty]
     Stop? selectedStop;
 
-    /// <summary>"No stops today" only makes sense when the list actually loaded.</summary>
-    public bool ShowEmptyState => HasLoaded && ErrorMessage is null && Stops.Count == 0;
+    public bool ShowEmptyState => HasLoaded && Stops.Count == 0;
 
     /// <summary>
-    /// Called every time the page appears, and by pull-to-refresh. No polling: a stop that dispatch
-    /// cancels only shows up here after the next refresh.
+    /// Shows today's stops from the local database, and shows them again after every sync and local write.
+    /// A stop that dispatch adds or cancels only appears after the next sync. Works offline.
     /// </summary>
-    [RelayCommand]
+    public async Task OnAppearingAsync()
+    {
+        database.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    public void OnDisappearing() => database.Changed -= OnChanged;
+
+    void OnChanged(object? sender, EventArgs e) => MainThread.BeginInvokeOnMainThread(async () => await LoadAsync());
+
     async Task LoadAsync()
+    {
+        var stops = await database.GetStopsAsync(LocalValues.Today());
+        // The whole list each time. With 8-10 stops, just replace it.
+        Stops.Clear();
+        foreach (var stop in stops)
+            Stops.Add(stop);
+        HasLoaded = true;
+        OnPropertyChanged(nameof(ShowEmptyState));
+    }
+
+    /// <summary>Pull-to-refresh: a sync, which is the only way to hear about dispatch's changes. The list reloads after it.</summary>
+    [RelayCommand]
+    async Task RefreshAsync()
     {
         try
         {
-            var stops = await api.GetStopsAsync();
-            Stops.Clear();
-            foreach (var stop in stops)
-                Stops.Add(stop);
-            ErrorMessage = null;
-            HasLoaded = true;
-        }
-        catch (ApiException ex)
-        {
-            // No cache: show what the API last returned, which is nothing.
-            Stops.Clear();
-            ErrorMessage = ErrorMessages.For(ex);
+            await database.SyncAsync();
         }
         finally
         {
             IsRefreshing = false;
-            OnPropertyChanged(nameof(ShowEmptyState));
         }
     }
 

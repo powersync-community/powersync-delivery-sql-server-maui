@@ -12,10 +12,16 @@ public partial class StopsPage : ContentPage
         BindingContext = _viewModel = viewModel;
     }
 
-    protected override void OnAppearing()
+    protected override async void OnAppearing()
     {
         base.OnAppearing();
-        // Reload every time the page appears (e.g. coming back from a stop). No polling.
-        _viewModel.LoadCommand.Execute(null);
+        // Reload from the local database every time the page appears (e.g. coming back from a stop).
+        await _viewModel.OnAppearingAsync();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _viewModel.OnDisappearing();
     }
 }

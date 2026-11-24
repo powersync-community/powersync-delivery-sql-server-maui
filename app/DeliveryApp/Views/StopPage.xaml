@@ -2,7 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:DeliveryApp.ViewModels"
-             xmlns:services="clr-namespace:DeliveryApp.Services"
+             xmlns:data="clr-namespace:DeliveryApp.Data"
              xmlns:views="clr-namespace:DeliveryApp.Views"
              xmlns:converters="clr-namespace:DeliveryApp.Converters"
              x:Class="DeliveryApp.Views.StopPage"
@@ -14,7 +14,12 @@
     </ContentPage.Resources>
 
     <Grid RowDefinitions="Auto,*,Auto">
-        <views:ErrorBanner Message="{Binding ErrorMessage}" />
+        <!-- Sync state: hidden when the last sync worked and nothing is waiting to upload. -->
+        <Label AutomationId="SyncStatus"
+               Text="{Binding Database.StatusLine}"
+               IsVisible="{Binding Database.StatusLine, Converter={x:Static converters:IsNotNullConverter.Instance}}"
+               Style="{StaticResource SecondaryLabel}"
+               Padding="16,8,16,0" />
 
         <RefreshView Grid.Row="1"
                      IsRefreshing="{Binding IsRefreshing}"
@@ -35,7 +40,7 @@
                            Style="{StaticResource SecondaryLabel}" />
                     <VerticalStackLayout BindableLayout.ItemsSource="{Binding Deliveries}" Spacing="0">
                         <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="services:Delivery">
+                            <DataTemplate x:DataType="data:Delivery">
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" Padding="0,8">
                                     <views:StatusBadge Status="{Binding Outcome}" />
                                     <Label Grid.Column="1"
