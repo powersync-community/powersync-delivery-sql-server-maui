@@ -32,10 +32,24 @@ services:
     entrypoint: ["/bin/sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P \"$$MSSQL_SA_PASSWORD\" -b -i /db/init.sql"]
     restart: "no"
 
+  # One-shot: adds the Datasync columns (version, deleted, updated_at) and updated_at triggers (idempotent).
+  db-datasync:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+    volumes:
+      - ./db:/db:ro
+    entrypoint: ["/bin/sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P \"$$MSSQL_SA_PASSWORD\" -b -i /db/datasync.sql"]
+    restart: "no"
+
   server:
     build: ./server/DeliveryApi
     depends_on:
-      db-init:
+      db-datasync:
         condition: service_completed_successfully
     environment:
       # Same database as CONNECTION_STRING in .env, but reached by its service name inside Docker.

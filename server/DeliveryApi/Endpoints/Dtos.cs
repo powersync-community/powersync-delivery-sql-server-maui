@@ -11,12 +11,12 @@ public record DeliveryRequest(string? Outcome, string? Note);
 
 public record StopDto(Guid Id, DateOnly RouteDate, int Sequence, string Recipient, string Address, string Status, DateTime UpdatedAt)
 {
-    public static StopDto From(Stop s) => new(s.Id, s.RouteDate, s.Sequence, s.Recipient, s.Address, s.Status, s.UpdatedAt);
+    public static StopDto From(Stop s) => new(Guid.Parse(s.Id), s.RouteDate, s.Sequence, s.Recipient, s.Address, s.Status, s.UpdatedAt!.Value.UtcDateTime);
 }
 
 public record DeliveryDto(Guid Id, Guid StopId, string Outcome, string? Note, DateTime RecordedAt)
 {
-    public static DeliveryDto From(Delivery d) => new(d.Id, d.StopId, d.Outcome, d.Note, d.RecordedAt);
+    public static DeliveryDto From(Delivery d) => new(Guid.Parse(d.Id), d.StopId, d.Outcome, d.Note, d.RecordedAt);
 }
 
 public record StopDetailResponse(StopDto Stop, IReadOnlyList<DeliveryDto> Deliveries);

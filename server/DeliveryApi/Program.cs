@@ -3,6 +3,7 @@ using DeliveryApi;
 using DeliveryApi.Auth;
 using DeliveryApi.Data;
 using DeliveryApi.Endpoints;
+using CommunityToolkit.Datasync.Server;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
@@ -60,6 +61,12 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
+// Datasync: table controllers for the app's offline sync (see Controllers/TableControllers.cs). They use their
+// own JSON settings (camelCase), so the minimal APIs above keep snake_case.
+builder.Services.AddDatasyncServices();
+builder.Services.AddControllers();
+builder.Services.AddHttpContextAccessor();
+
 var app = builder.Build();
 
 if (keyGenerated)
@@ -81,5 +88,6 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapStopEndpoints();
+app.MapControllers();
 
 app.Run();

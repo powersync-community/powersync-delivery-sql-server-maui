@@ -33,7 +33,7 @@ public static class StopEndpoints
     static async Task<IResult> GetStop(Guid id, HttpContext http, DeliveryDbContext db)
     {
         var driverId = http.User.DriverId();
-        var stop = await db.Stops.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id && s.DriverId == driverId);
+        var stop = await db.Stops.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id.ToString() && s.DriverId == driverId);
         if (stop is null)
             return ApiResults.NotFound();
 
@@ -73,7 +73,7 @@ public static class StopEndpoints
         if (updated == 0)
             return ApiResults.NotFound();
 
-        var stop = await db.Stops.SingleAsync(s => s.Id == id && s.DriverId == driverId);
+        var stop = await db.Stops.SingleAsync(s => s.Id == id.ToString() && s.DriverId == driverId);
         switch (stop.Status)
         {
             case StopStatus.Canceled:
