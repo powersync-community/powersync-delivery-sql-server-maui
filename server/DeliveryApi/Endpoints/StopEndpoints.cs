@@ -48,6 +48,7 @@ public static class StopEndpoints
     /// <summary>
     /// Records a delivery attempt. The business rule lives here, on the server: a stop that dispatch
     /// canceled, or that is already delivered, can't take another outcome. A failed stop can be retried.
+    /// Safe to repeat: a client that sends its own delivery ID gets 200 for a delivery that's already here.
     /// </summary>
     static async Task<IResult> RecordDelivery(
         Guid id, DeliveryRequest request, HttpContext http, DeliveryDbContext db, ILoggerFactory loggers)
@@ -74,6 +75,19 @@ public static class StopEndpoints
             return ApiResults.NotFound();
 
         var stop = await db.Stops.SingleAsync(s => s.Id == id && s.DriverId == driverId);
+
+        // Uploads are retried (e.g. the connection dropped after we committed), so the same delivery can
+        // arrive twice. If we already have it, say so, before the status rule: a retry of an accepted
+        // "delivered" must not be told the stop is already delivered.
+        // (Two copies arriving at once queue on the stop lock above, so the second one also lands here.)
+        // Production: an ID that exists for another stop or driver fails the insert below with a 500, which
+        // the client retries forever. Check for it and return 400 instead.
+        if (request.Id is { } deliveryId &&
+            await db.Deliveries.AsNoTracking().SingleOrDefaultAsync(d => d.Id == deliveryId && d.StopId == id && d.DriverId == driverId) is { } existing)
+        {
+            return Results.Ok(new DeliveryResponse(StopDto.From(stop), DeliveryDto.From(existing)));
+        }
+
         switch (stop.Status)
         {
             case StopStatus.Canceled:
@@ -82,10 +96,21 @@ public static class StopEndpoints
                 return ApiResults.Conflict("This stop is already delivered.");
         }
 
-        var delivery = new Delivery { StopId = id, DriverId = driverId, Outcome = outcome, Note = note };
+        // The client's ID and tap time, if it sent them. Guid.Empty and default(DateTime) mean "not set",
+        // so the database defaults (NEWSEQUENTIALID(), SYSUTCDATETIME()) apply as before.
+        // Production: check recorded_at against the server clock; a device with a wrong clock sends a wrong time.
+        var delivery = new Delivery
+        {
+            Id = request.Id ?? Guid.Empty,
+            StopId = id,
+            DriverId = driverId,
+            Outcome = outcome,
+            Note = note,
+            RecordedAt = request.RecordedAt?.UtcDateTime ?? default,
+        };
         db.Deliveries.Add(delivery);
         stop.Status = outcome;
-        await db.SaveChangesAsync(); // Reads back the database-generated delivery ID and recorded_at.
+        await db.SaveChangesAsync(); // Reads back the delivery ID and recorded_at if the database generated them.
 
         await tx.CommitAsync();
 

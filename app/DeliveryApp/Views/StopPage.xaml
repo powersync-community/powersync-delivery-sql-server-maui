@@ -2,7 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:DeliveryApp.ViewModels"
-             xmlns:services="clr-namespace:DeliveryApp.Services"
+             xmlns:data="clr-namespace:DeliveryApp.Data"
              xmlns:views="clr-namespace:DeliveryApp.Views"
              xmlns:converters="clr-namespace:DeliveryApp.Converters"
              x:Class="DeliveryApp.Views.StopPage"
@@ -13,50 +13,53 @@
         <converters:RelativeTimeConverter x:Key="RelativeTime" />
     </ContentPage.Resources>
 
-    <Grid RowDefinitions="Auto,*,Auto">
-        <views:ErrorBanner Message="{Binding ErrorMessage}" />
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <!-- Sync state: hidden while online with nothing waiting to upload. -->
+        <Label AutomationId="SyncStatus"
+               Text="{Binding Database.StatusLine}"
+               IsVisible="{Binding Database.StatusLine, Converter={x:Static converters:IsNotNullConverter.Instance}}"
+               Style="{StaticResource SecondaryLabel}"
+               Padding="16,8,16,0" />
 
-        <RefreshView Grid.Row="1"
-                     IsRefreshing="{Binding IsRefreshing}"
-                     Command="{Binding RefreshCommand}">
-            <ScrollView>
-                <VerticalStackLayout Padding="16" Spacing="4">
-                    <!-- The stop -->
-                    <Label Text="{Binding Stop.Recipient}" FontSize="22" FontAttributes="Bold" />
-                    <Label Text="{Binding Stop.Address}" Style="{StaticResource SecondaryLabel}" FontSize="16" />
-                    <views:StatusBadge Status="{Binding Stop.Status}" Margin="0,8,0,0" />
+        <views:ErrorBanner Grid.Row="1" Message="{Binding ErrorMessage}" />
 
-                    <!-- Earlier attempts -->
-                    <Label Text="Earlier attempts"
-                           FontAttributes="Bold"
-                           Margin="0,24,0,4" />
-                    <Label Text="No attempts yet."
-                           IsVisible="{Binding ShowNoAttempts}"
-                           Style="{StaticResource SecondaryLabel}" />
-                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Deliveries}" Spacing="0">
-                        <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="services:Delivery">
-                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" Padding="0,8">
-                                    <views:StatusBadge Status="{Binding Outcome}" />
-                                    <Label Grid.Column="1"
-                                           Text="{Binding RecordedAt, Converter={StaticResource RelativeTime}}"
-                                           Style="{StaticResource SecondaryLabel}"
-                                           VerticalOptions="Center" />
-                                    <Label Grid.Row="1"
-                                           Grid.ColumnSpan="2"
-                                           Text="{Binding Note}"
-                                           IsVisible="{Binding Note, Converter={x:Static converters:IsNotNullConverter.Instance}}"
-                                           Margin="0,4,0,0" />
-                                </Grid>
-                            </DataTemplate>
-                        </BindableLayout.ItemTemplate>
-                    </VerticalStackLayout>
+        <ScrollView Grid.Row="2">
+            <VerticalStackLayout Padding="16" Spacing="4">
+                <!-- The stop -->
+                <Label Text="{Binding Stop.Recipient}" FontSize="22" FontAttributes="Bold" />
+                <Label Text="{Binding Stop.Address}" Style="{StaticResource SecondaryLabel}" FontSize="16" />
+                <views:StatusBadge Status="{Binding Stop.Status}" Margin="0,8,0,0" />
+
+                <!-- Earlier attempts -->
+                <Label Text="Earlier attempts"
+                       FontAttributes="Bold"
+                       Margin="0,24,0,4" />
+                <Label Text="No attempts yet."
+                       IsVisible="{Binding ShowNoAttempts}"
+                       Style="{StaticResource SecondaryLabel}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Deliveries}" Spacing="0">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="data:Delivery">
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" Padding="0,8">
+                                <views:StatusBadge Status="{Binding Outcome}" />
+                                <Label Grid.Column="1"
+                                       Text="{Binding RecordedAt, Converter={StaticResource RelativeTime}}"
+                                       Style="{StaticResource SecondaryLabel}"
+                                       VerticalOptions="Center" />
+                                <Label Grid.Row="1"
+                                       Grid.ColumnSpan="2"
+                                       Text="{Binding Note}"
+                                       IsVisible="{Binding Note, Converter={x:Static converters:IsNotNullConverter.Instance}}"
+                                       Margin="0,4,0,0" />
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
                 </VerticalStackLayout>
-            </ScrollView>
-        </RefreshView>
+            </VerticalStackLayout>
+        </ScrollView>
 
         <!-- Record an outcome (assigned or failed stops), or say why there's nothing to do. -->
-        <Grid Grid.Row="2" Padding="16,8,16,16" RowDefinitions="Auto,Auto" ColumnDefinitions="*,*" ColumnSpacing="12" RowSpacing="12">
+        <Grid Grid.Row="3" Padding="16,8,16,16" RowDefinitions="Auto,Auto" ColumnDefinitions="*,*" ColumnSpacing="12" RowSpacing="12">
             <BoxView Grid.ColumnSpan="2"
                      HeightRequest="1"
                      VerticalOptions="Start"

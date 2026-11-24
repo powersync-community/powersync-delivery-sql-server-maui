@@ -1,19 +1,23 @@
 using System.Collections.ObjectModel;
-using System.Net;
+using DeliveryApp.Data;
 using DeliveryApp.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PowerSync.Common.Client;
 
 namespace DeliveryApp.ViewModels;
 
-public partial class StopViewModel(ApiClient api) : ObservableObject, IQueryAttributable
+public partial class StopViewModel(Database database, DeliveryConnector connector)
+    : SyncedViewModel(database, connector), IQueryAttributable
 {
     public const string StopParameter = "stop";
+
+    CancellationTokenSource? _watching;
 
     /// <summary>Earlier delivery attempts, oldest first.</summary>
     public ObservableCollection<Delivery> Deliveries { get; } = [];
 
-    /// <summary>Starts as the stop from the list, then whatever the API last returned.</summary>
+    /// <summary>Starts as the stop from the list, then whatever the local database says.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRecordOutcome), nameof(ClosedMessage))]
     Stop? stop;
@@ -28,10 +32,6 @@ public partial class StopViewModel(ApiClient api) : ObservableObject, IQueryAttr
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNoAttempts))]
     bool hasLoaded;
-
-    /// <summary>Text of the dismissable error banner, or null when there's nothing to show.</summary>
-    [ObservableProperty]
-    string? errorMessage;
 
     /// <summary>Assigned and failed stops can take an outcome. A failed stop can be attempted again.</summary>
     public bool CanRecordOutcome => Stop?.Status is StopStatus.Assigned or StopStatus.Failed;
@@ -52,34 +52,68 @@ public partial class StopViewModel(ApiClient api) : ObservableObject, IQueryAttr
             Stop = stop;
     }
 
-    public async Task OnAppearingAsync()
+    /// <summary>
+    /// Shows the stop and its attempts from the local database, live: a cancellation by dispatch, or an
+    /// attempt recorded on another device, shows up as soon as it syncs.
+    /// </summary>
+    public void OnAppearing()
+    {
+        StartShowingRejections();
+        if (_watching is not null || Stop is not { } stop)
+            return;
+        _watching = new CancellationTokenSource();
+        _ = WatchStopAsync(stop.Id, _watching.Token);
+        _ = WatchDeliveriesAsync(stop.Id, _watching.Token);
+    }
+
+    public void OnDisappearing()
+    {
+        StopShowingRejections();
+        _watching?.Cancel();
+        _watching = null;
+    }
+
+    async Task WatchStopAsync(string stopId, CancellationToken ct)
     {
         try
         {
-            await ReloadAsync();
-            ErrorMessage = null;
+            var results = Database.Db.Watch<Stop>(
+                "SELECT * FROM stops WHERE id = ?", [stopId],
+                new SQLWatchOptions { Signal = ct, TriggerImmediately = true });
+            await foreach (var stops in results.WithCancellation(ct))
+            {
+                if (stops.FirstOrDefault() is { } stop)
+                    await MainThread.InvokeOnMainThreadAsync(() => Stop = stop);
+            }
         }
-        catch (ApiException ex)
+        catch (OperationCanceledException)
         {
-            ErrorMessage = ErrorMessages.For(ex);
+            // The page disappeared.
         }
     }
 
-    [ObservableProperty]
-    bool isRefreshing;
-
-    /// <summary>Pull-to-refresh. No polling: attempts recorded elsewhere, or a cancellation by dispatch,
-    /// only show up here after a refresh (or when the page appears again).</summary>
-    [RelayCommand]
-    async Task RefreshAsync()
+    async Task WatchDeliveriesAsync(string stopId, CancellationToken ct)
     {
         try
         {
-            await OnAppearingAsync();
+            var results = Database.Db.Watch<Delivery>(
+                "SELECT * FROM deliveries WHERE stop_id = ? ORDER BY recorded_at", [stopId],
+                new SQLWatchOptions { Signal = ct, TriggerImmediately = true });
+            await foreach (var deliveries in results.WithCancellation(ct))
+            {
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    Deliveries.Clear();
+                    foreach (var delivery in deliveries)
+                        Deliveries.Add(delivery);
+                    HasLoaded = true;
+                    OnPropertyChanged(nameof(ShowNoAttempts));
+                });
+            }
         }
-        finally
+        catch (OperationCanceledException)
         {
-            IsRefreshing = false;
+            // The page disappeared.
         }
     }
 
@@ -91,6 +125,10 @@ public partial class StopViewModel(ApiClient api) : ObservableObject, IQueryAttr
     [RelayCommand(CanExecute = nameof(CanSend))]
     Task FailedAsync() => RecordAsync(Outcomes.Failed);
 
+    /// <summary>
+    /// Writes the attempt to the local database, which works offline. PowerSync queues it and
+    /// DeliveryConnector uploads it; the server still decides whether the stop could take it.
+    /// </summary>
     async Task RecordAsync(string outcome)
     {
         if (Stop is not { } stop)
@@ -100,57 +138,19 @@ public partial class StopViewModel(ApiClient api) : ObservableObject, IQueryAttr
         try
         {
             var note = string.IsNullOrWhiteSpace(Note) ? null : Note.Trim();
-            var result = await api.RecordDeliveryAsync(stop.Id, outcome, note);
-            Stop = result.Stop;
+            await Database.Db.WriteTransaction(async tx =>
+            {
+                await tx.Execute(
+                    "INSERT INTO deliveries (id, stop_id, driver_id, outcome, note, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    [AppSchema.NewId(), stop.Id, stop.DriverId, outcome, note, AppSchema.UtcNow()]);
+                await tx.Execute("UPDATE stops SET status = ? WHERE id = ?", [outcome, stop.Id]);
+            });
             Note = "";
-            ErrorMessage = null;
-            // Reload rather than appending result.Delivery: attempts recorded elsewhere since the page
-            // opened would otherwise stay missing. If the reload fails, show at least our own attempt.
-            try
-            {
-                await ReloadAsync();
-            }
-            catch (ApiException)
-            {
-                if (Deliveries.All(d => d.Id != result.Delivery.Id))
-                    Deliveries.Add(result.Delivery);
-                OnPropertyChanged(nameof(ShowNoAttempts));
-            }
-        }
-        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
-        {
-            // The server said no (e.g. dispatch canceled the stop). Show why, then show its real status.
-            ErrorMessage = ex.Message;
-            try
-            {
-                await ReloadAsync();
-            }
-            catch (ApiException)
-            {
-                // Keep the server's message; it's the more useful one.
-            }
-        }
-        catch (ApiException ex)
-        {
-            // Keep the note so the driver can press the button again. No queueing, no automatic retry.
-            ErrorMessage = ErrorMessages.For(ex);
+            await Database.RefreshStatusLineAsync();
         }
         finally
         {
             IsBusy = false;
         }
-    }
-
-    async Task ReloadAsync()
-    {
-        if (Stop is not { } stop)
-            return;
-        var detail = await api.GetStopAsync(stop.Id);
-        Stop = detail.Stop;
-        Deliveries.Clear();
-        foreach (var delivery in detail.Deliveries)
-            Deliveries.Add(delivery);
-        HasLoaded = true;
-        OnPropertyChanged(nameof(ShowNoAttempts));
     }
 }

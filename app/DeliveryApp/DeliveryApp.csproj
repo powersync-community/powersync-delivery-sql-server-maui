@@ -27,6 +27,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="PowerSync.Common" Version="1.0.1" />
   </ItemGroup>
 
 </Project>
